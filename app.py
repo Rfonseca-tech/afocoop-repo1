@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -76,7 +76,7 @@ def load_and_preprocess_data(file_path):
     # Create Price Range Buckets
     def get_price_bucket(val):
         if pd.isna(val) or val <= 0: return "Sem Valor Definido"
-        if val <= 200000: return "Até R$ 200k"
+        if val <= 200000: return "AtÃ© R$ 200k"
         if val <= 300000: return "R$ 200k a R$ 300k"
         if val <= 450000: return "R$ 300k a R$ 450k"
         if val <= 600000: return "R$ 450k a R$ 600k"
@@ -90,8 +90,8 @@ def load_and_preprocess_data(file_path):
 # ---------------------------------------------------------------------------
 # App Layout
 # ---------------------------------------------------------------------------
-st.title("🚚 AFOOCOP: Relatório e Simulador de Rateio")
-st.markdown("Analise o custo compartilhado atual e simule novos cenários de cobrança com base em faixas de valor do equipamento.")
+st.title("ðŸšš AFOOCOP: RelatÃ³rio e Simulador de Rateio")
+st.markdown("Analise o custo compartilhado atual e simule novos cenÃ¡rios de cobranÃ§a com base em faixas de valor do equipamento.")
 
 import os
 
@@ -110,25 +110,25 @@ try:
             st.sidebar.error(f"Erro no processamento: {error}")
             df = None
         else:
-            st.sidebar.success("✅ Rateios Consolidados carregados!")
+            st.sidebar.success("âœ… Rateios Consolidados carregados!")
     else:
         df = None
-        error = f"Não encontrei o arquivo em: {file_path}"
+        error = f"NÃ£o encontrei o arquivo em: {file_path}"
         st.sidebar.error(error)
 except Exception as e:
-    st.sidebar.error(f"Erro sistêmico ao ler arquivo: {e}")
+    st.sidebar.error(f"Erro sistÃªmico ao ler arquivo: {e}")
     df = None
     error = str(e)
 
 if error or df is None:
-    st.info("👈 O arquivo consolidado não foi encontrado na pasta correta.")
+    st.info("ðŸ‘ˆ O arquivo consolidado nÃ£o foi encontrado na pasta correta.")
     st.stop()
 
 # Sidebar - Filters
 st.sidebar.header("2. Filtros")
 
 all_months = df["MONTH"].unique().tolist()
-selected_months = st.sidebar.multiselect("Filtrar por Mês", all_months, default=all_months)
+selected_months = st.sidebar.multiselect("Filtrar por MÃªs", all_months, default=all_months)
 
 all_equip_types = df["EQUIPMENT_TYPE"].unique().tolist()
 selected_types = st.sidebar.multiselect("Filtrar por Tipo de Equip.", all_equip_types, default=all_equip_types)
@@ -136,8 +136,9 @@ selected_types = st.sidebar.multiselect("Filtrar por Tipo de Equip.", all_equip_
 all_brands = df["EQUIPMENT_BRAND"].unique().tolist()
 selected_brands = st.sidebar.multiselect("Filtrar por Marca", all_brands, default=all_brands)
 
-all_buckets = ["Até R$ 200k", "R$ 200k a R$ 300k", "R$ 300k a R$ 450k", "R$ 450k a R$ 600k", "Acima de R$ 600k", "Sem Valor Definido"]
-selected_buckets = st.sidebar.multiselect("Filtrar por Faixa de Valor do Equipamento", all_buckets, default=all_buckets)
+all_buckets = ["AtÃ© R$ 200k", "R$ 200k a R$ 300k", "R$ 300k a R$ 450k", "R$ 450k a R$ 600k", "Acima de R$ 600k", "Sem Valor Definido"]
+default_buckets = [b for b in all_buckets if b != "Sem Valor Definido"]
+selected_buckets = st.sidebar.multiselect("Filtrar por Faixa de Valor do Equipamento", all_buckets, default=default_buckets)
 
 search_plate = st.sidebar.text_input("Buscar por Placa")
 
@@ -159,16 +160,16 @@ if filtered_df.empty:
 # ---------------------------------------------------------------------------
 # 3. Value-Range Bracket Configuration
 # ---------------------------------------------------------------------------
-st.subheader("Configuração das Faixas de Cobrança (Brackets)")
-st.caption("Edite a tabela abaixo para definir as faixas de valor do veículo e a mensalidade proposta para cada uma.")
+st.subheader("ConfiguraÃ§Ã£o das Faixas de CobranÃ§a (Brackets)")
+st.caption("Edite a tabela abaixo para definir as faixas de valor do veÃ­culo e a mensalidade proposta para cada uma.")
 
 # Default Brackets using the data-driven distribution
 default_brackets = pd.DataFrame([
-    {"Nome da Faixa": "Até R$ 200k", "Valor Mínimo (R$)": 0, "Valor Máximo (R$)": 200000, "Mensalidade Simulada (R$)": 80.0},
-    {"Nome da Faixa": "R$ 200k a R$ 300k", "Valor Mínimo (R$)": 200000.01, "Valor Máximo (R$)": 300000, "Mensalidade Simulada (R$)": 120.0},
-    {"Nome da Faixa": "R$ 300k a R$ 450k", "Valor Mínimo (R$)": 300000.01, "Valor Máximo (R$)": 450000, "Mensalidade Simulada (R$)": 180.0},
-    {"Nome da Faixa": "R$ 450k a R$ 600k", "Valor Mínimo (R$)": 450000.01, "Valor Máximo (R$)": 600000, "Mensalidade Simulada (R$)": 250.0},
-    {"Nome da Faixa": "Acima de R$ 600k", "Valor Mínimo (R$)": 600000.01, "Valor Máximo (R$)": 99999999, "Mensalidade Simulada (R$)": 350.0},
+    {"Nome da Faixa": "AtÃ© R$ 200k", "Valor MÃ­nimo (R$)": 0, "Valor MÃ¡ximo (R$)": 200000, "Mensalidade Simulada (R$)": 80.0},
+    {"Nome da Faixa": "R$ 200k a R$ 300k", "Valor MÃ­nimo (R$)": 200000.01, "Valor MÃ¡ximo (R$)": 300000, "Mensalidade Simulada (R$)": 120.0},
+    {"Nome da Faixa": "R$ 300k a R$ 450k", "Valor MÃ­nimo (R$)": 300000.01, "Valor MÃ¡ximo (R$)": 450000, "Mensalidade Simulada (R$)": 180.0},
+    {"Nome da Faixa": "R$ 450k a R$ 600k", "Valor MÃ­nimo (R$)": 450000.01, "Valor MÃ¡ximo (R$)": 600000, "Mensalidade Simulada (R$)": 250.0},
+    {"Nome da Faixa": "Acima de R$ 600k", "Valor MÃ­nimo (R$)": 600000.01, "Valor MÃ¡ximo (R$)": 99999999, "Mensalidade Simulada (R$)": 350.0},
 ])
 
 # Editable dataframe for brackets
@@ -186,7 +187,7 @@ def assign_bracket(val, brackets_df):
         
     for _, row in brackets_df.iterrows():
         try:
-            if row["Valor Mínimo (R$)"] <= val <= row["Valor Máximo (R$)"]:
+            if row["Valor MÃ­nimo (R$)"] <= val <= row["Valor MÃ¡ximo (R$)"]:
                 return row["Nome da Faixa"], float(row["Mensalidade Simulada (R$)"])
         except:
             continue
@@ -215,15 +216,15 @@ total_current = filtered_df["CURRENT_PAYMENT"].sum()
 total_simulated = filtered_df["SIMULATED_PAYMENT"].sum()
 diff_total = total_simulated - total_current
 
-col1.metric("Veículos Únicos", f"{total_trucks:,}")
-col2.metric("Média Valor FIPE", f"R$ {avg_equip_val:,.2f}")
+col1.metric("VeÃ­culos Ãšnicos", f"{total_trucks:,}")
+col2.metric("MÃ©dia Valor FIPE", f"R$ {avg_equip_val:,.2f}")
 
 
 # ---------------------------------------------------------------------------
 # 5. Visual Analysis
 # ---------------------------------------------------------------------------
 st.markdown("---")
-st.subheader("Análise Visual")
+st.subheader("AnÃ¡lise Visual")
 
 # Chart 2: Output by Bracket
 bracket_totals = filtered_df.groupby("BRACKET_NAME").agg(
@@ -233,16 +234,26 @@ bracket_totals = filtered_df.groupby("BRACKET_NAME").agg(
 
 fig2 = px.pie(
     bracket_totals, values="COUNT", names="BRACKET_NAME", hole=0.4,
-    title="Distribuição de Veículos por Faixa de Valor"
+    title="DistribuiÃ§Ã£o de VeÃ­culos por Faixa de Valor"
 )
+fig2.update_traces(
+    texttemplate="%{label}<br>%{value} veic. (%{percent})",
+    textposition="inside"
+)
+fig2.update_layout(hiddenlabels=["Sem Valor Definido"])
 st.plotly_chart(fig2, use_container_width=True)
 
-# Chart FAP — Faixas por Mês (contagem absoluta + % por faixa)
-BUCKET_ORDER = ["Até R$ 200k", "R$ 200k a R$ 300k", "R$ 300k a R$ 450k", "R$ 450k a R$ 600k", "Acima de R$ 600k", "Sem Valor Definido"]
+# Chart FAP â€” Faixas por MÃªs (contagem absoluta + % por faixa)
+BUCKET_ORDER = ["AtÃ© R$ 200k", "R$ 200k a R$ 300k", "R$ 300k a R$ 450k", "R$ 450k a R$ 600k", "Acima de R$ 600k", "Sem Valor Definido"]
+def hide_sem_valor_default(fig):
+    for tr in fig.data:
+        if getattr(tr, "name", None) == "Sem Valor Definido":
+            tr.visible = "legendonly"
+    return fig
 
 if "FUNDO" in filtered_df.columns:
     st.markdown("---")
-    st.subheader("FAP — Faixas de Valor por Mês")
+    st.subheader("FAP â€” Faixas de Valor por MÃªs")
 
     df_fap = filtered_df[filtered_df["FUNDO"] == "FAP"]
     if not df_fap.empty:
@@ -250,28 +261,29 @@ if "FUNDO" in filtered_df.columns:
         fap_faixa.columns = ["MONTH", "EQUIP_VAL_BUCKET", "COUNT"]
         month_tot = fap_faixa.groupby("MONTH")["COUNT"].transform("sum")
         fap_faixa["PCT"] = (fap_faixa["COUNT"] / month_tot * 100).round(1)
-        fap_faixa["LABEL"] = fap_faixa.apply(lambda r: f"{r['PCT']:.1f}%\n{int(r['COUNT'])} veíc.", axis=1)
+        fap_faixa["LABEL"] = fap_faixa.apply(lambda r: f"{r['PCT']:.1f}%\n{int(r['COUNT'])} veÃ­c.", axis=1)
 
         fig_fap_faixas = px.bar(
             fap_faixa, x="MONTH", y="COUNT", color="EQUIP_VAL_BUCKET",
             barmode="stack",
             category_orders={"EQUIP_VAL_BUCKET": BUCKET_ORDER},
-            title="FAP — Quantidade de Veículos por Faixa e Mês",
-            labels={"COUNT": "Nº de Veículos", "MONTH": "Mês", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
+            title="FAP â€” Quantidade de VeÃ­culos por Faixa e MÃªs",
+            labels={"COUNT": "NÂº de VeÃ­culos", "MONTH": "MÃªs", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
             text="LABEL",
         )
         fig_fap_faixas.update_traces(textposition="inside", insidetextanchor="middle")
-        fig_fap_faixas.update_layout(legend_title_text="Faixa", yaxis_title="Nº de Veículos")
+        fig_fap_faixas.update_layout(legend_title_text="Faixa", yaxis_title="NÂº de VeÃ­culos")
+        hide_sem_valor_default(fig_fap_faixas)
         st.plotly_chart(fig_fap_faixas, use_container_width=True)
 
-# Charts 3–6: Composição + Top 10 por Fundo — FAP primeiro, depois DPA
+# Charts 3â€“6: ComposiÃ§Ã£o + Top 10 por Fundo â€” FAP primeiro, depois DPA
 
 if "FUNDO" in filtered_df.columns:
-    filtered_df["MARCA_MODELO"] = filtered_df["EQUIPMENT_BRAND"].str.strip() + " — " + filtered_df["EQUIPMENT_MODEL"].str.strip()
+    filtered_df["MARCA_MODELO"] = filtered_df["EQUIPMENT_BRAND"].str.strip() + " â€” " + filtered_df["EQUIPMENT_MODEL"].str.strip()
 
     for fundo_name in ["FAP", "DPA"]:
         st.markdown("---")
-        st.subheader(f"📊 {fundo_name}")
+        st.subheader(f"ðŸ“Š {fundo_name}")
 
         df_fundo = filtered_df[filtered_df["FUNDO"] == fundo_name]
 
@@ -279,37 +291,38 @@ if "FUNDO" in filtered_df.columns:
             st.warning(f"Sem dados para {fundo_name}.")
             continue
 
-        # Composição por faixa de valor — largura total
+        # ComposiÃ§Ã£o por faixa de valor â€” largura total
         comp = df_fundo.groupby(["MONTH", "EQUIP_VAL_BUCKET"])["LICENSE_PLATE"].count().reset_index()
         comp.columns = ["MONTH", "EQUIP_VAL_BUCKET", "COUNT"]
         month_totals = comp.groupby("MONTH")["COUNT"].transform("sum")
         comp["PCT"] = (comp["COUNT"] / month_totals * 100).round(1)
-        comp["LABEL"] = comp.apply(lambda r: f"{r['PCT']:.1f}% | {int(r['COUNT'])} veíc.", axis=1)
+        comp["LABEL"] = comp.apply(lambda r: f"{r['PCT']:.1f}% | {int(r['COUNT'])} veÃ­c.", axis=1)
 
         fig_comp = px.bar(
             comp, x="MONTH", y="PCT", color="EQUIP_VAL_BUCKET",
             barmode="stack",
             category_orders={"EQUIP_VAL_BUCKET": BUCKET_ORDER},
-            title=f"Composição por Faixa de Valor — {fundo_name}",
-            labels={"PCT": "% de Veículos", "MONTH": "Mês", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
+            title=f"ComposiÃ§Ã£o por Faixa de Valor â€” {fundo_name}",
+            labels={"PCT": "% de VeÃ­culos", "MONTH": "MÃªs", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
             text="LABEL",
         )
         fig_comp.update_traces(textposition="inside", insidetextanchor="middle")
         fig_comp.update_layout(yaxis_ticksuffix="%", legend_title_text="Faixa")
+        hide_sem_valor_default(fig_comp)
         st.plotly_chart(fig_comp, use_container_width=True)
 
-        # Top 10 por faixa — filtros de faixa e mês
+        # Top 10 por faixa â€” filtros de faixa e mÃªs
         available_buckets = [b for b in BUCKET_ORDER if b in df_fundo["EQUIP_VAL_BUCKET"].unique()]
         available_months = ["Acumulado"] + df_fundo["MONTH"].unique().tolist()
 
         fc1, fc2 = st.columns(2)
         selected_bucket = fc1.selectbox(
-            f"Faixa de Valor — {fundo_name}",
+            f"Faixa de Valor â€” {fundo_name}",
             options=available_buckets,
             key=f"bucket_select_{fundo_name}"
         )
         selected_month_top = fc2.selectbox(
-            f"Mês — {fundo_name}",
+            f"MÃªs â€” {fundo_name}",
             options=available_months,
             key=f"month_select_{fundo_name}"
         )
@@ -321,7 +334,7 @@ if "FUNDO" in filtered_df.columns:
         total_bucket = df_bucket["LICENSE_PLATE"].nunique()
 
         if total_bucket == 0:
-            st.warning(f"Sem dados para {fundo_name} na faixa/mês selecionados.")
+            st.warning(f"Sem dados para {fundo_name} na faixa/mÃªs selecionados.")
             continue
 
         top10 = (
@@ -334,13 +347,13 @@ if "FUNDO" in filtered_df.columns:
         )
         top10["PCT"] = (top10["COUNT"] / total_bucket * 100).round(1)
         top10 = top10.sort_values("PCT", ascending=True)
-        top10["LABEL"] = top10.apply(lambda r: f"{r['PCT']:.1f}% | {int(r['COUNT'])} veíc.", axis=1)
+        top10["LABEL"] = top10.apply(lambda r: f"{r['PCT']:.1f}% | {int(r['COUNT'])} veÃ­c.", axis=1)
 
         periodo = selected_month_top if selected_month_top != "Acumulado" else "Acumulado"
         fig_top = px.bar(
             top10, x="PCT", y="MARCA_MODELO", orientation="h",
-            title=f"Top 10 Marcas/Equipamentos — {fundo_name} / {selected_bucket} / {periodo}",
-            labels={"PCT": "% de Veículos", "MARCA_MODELO": "Marca / Modelo"},
+            title=f"Top 10 Marcas/Equipamentos â€” {fundo_name} / {selected_bucket} / {periodo}",
+            labels={"PCT": "% de VeÃ­culos", "MARCA_MODELO": "Marca / Modelo"},
             text="LABEL",
         )
         fig_top.update_traces(textposition="inside", insidetextanchor="middle")
@@ -348,13 +361,13 @@ if "FUNDO" in filtered_df.columns:
         st.plotly_chart(fig_top, use_container_width=True)
 
 else:
-    st.warning("Coluna FUNDO não encontrada — gráficos de composição DPA/FAP indisponíveis.")
+    st.warning("Coluna FUNDO nÃ£o encontrada â€” grÃ¡ficos de composiÃ§Ã£o DPA/FAP indisponÃ­veis.")
 
 # ---------------------------------------------------------------------------
 # 7. Detailed Analysis Table & Export
 # ---------------------------------------------------------------------------
 st.markdown("---")
-st.subheader("Tabela Analítica (Detalhada)")
+st.subheader("Tabela AnalÃ­tica (Detalhada)")
 
 display_cols = [
     "MONTH", "LICENSE_PLATE", "EQUIPMENT_TYPE", "EQUIPMENT_BRAND", "EQUIPMENT_MODEL", "EQUIPMENT_VALUE", 
@@ -374,7 +387,7 @@ st.dataframe(
 # Export button
 csv_export = filtered_df.to_csv(index=False).encode('utf-8')
 st.download_button(
-    label="⬇️ Baixar Tabela de Simulação (CSV)",
+    label="â¬‡ï¸ Baixar Tabela de SimulaÃ§Ã£o (CSV)",
     data=csv_export,
     file_name="afoocop_simulacao.csv",
     mime="text/csv",
@@ -390,10 +403,10 @@ benefited = len(filtered_df[filtered_df["DIFFERENCE"] < 0])
 penalized = len(filtered_df[filtered_df["DIFFERENCE"] > 0])
 
 st.info(f"""
-💡 **Resumo do Cenário Simulado:**
-- Sob a sua nova regra de faixas, a arrecadação total passaria de **R$ {total_current:,.2f}** para **R$ {total_simulated:,.2f}**.
-- Isso representa uma variação de **{((total_simulated - total_current) / total_current) * 100:.1f}%** no caixa do agrupamento.
-- **{benefited}** cobranças mensais ficariam **mais baratas** (motoristas que economizam).
-- **{penalized}** cobranças mensais ficariam **mais caras** (veículos de maior valor que passam a pagar mais).
-- Existem **{len(filtered_df[filtered_df['BRACKET_NAME'] == 'Sem Valor Definido'])}** veículos sem o `Valor Equipamento` cadastrado na base, portanto, foram cobrados R$ 0,00 na simulação.
+ðŸ’¡ **Resumo do CenÃ¡rio Simulado:**
+- Sob a sua nova regra de faixas, a arrecadaÃ§Ã£o total passaria de **R$ {total_current:,.2f}** para **R$ {total_simulated:,.2f}**.
+- Isso representa uma variaÃ§Ã£o de **{((total_simulated - total_current) / total_current) * 100:.1f}%** no caixa do agrupamento.
+- **{benefited}** cobranÃ§as mensais ficariam **mais baratas** (motoristas que economizam).
+- **{penalized}** cobranÃ§as mensais ficariam **mais caras** (veÃ­culos de maior valor que passam a pagar mais).
+- Existem **{len(filtered_df[filtered_df['BRACKET_NAME'] == 'Sem Valor Definido'])}** veÃ­culos sem o `Valor Equipamento` cadastrado na base, portanto, foram cobrados R$ 0,00 na simulaÃ§Ã£o.
 """)
