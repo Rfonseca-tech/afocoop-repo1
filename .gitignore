@@ -1,0 +1,40 @@
+# Backups gerados automaticamente
+*.backup*.xlsx
+*.backup_antes_*.xlsx
+
+# Logs e outputs de debug
+*.log
+*.txt
+run_log.txt
+run_html.log
+build_log.txt
+coverage_log.txt
+debug*.txt
+debug*.json
+saida.txt
+cols.txt
+cobertura.txt
+erro.txt
+dbg_*.txt
+dbg_*.json
+
+# Arquivos de debug/inspeção temporários
+inspect_output*.txt
+inspect_bases*.json
+debug_out.json
+debug_plates_out.json
+result.json
+base_cols.json
+cross_res.json
+sample.csv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code
+.vscode/
+
+# Streamlit cache
+.streamlit/
