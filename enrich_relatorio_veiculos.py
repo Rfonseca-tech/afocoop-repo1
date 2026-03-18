@@ -125,7 +125,6 @@ def main():
     print(f"\n4. Etapa 2 — API ({total_api} placas únicas | {WORKERS} workers paralelos)...")
 
     api_cache = {}
-    limite_atingido = False
     done = 0
     ok = 0
     fail = 0
@@ -143,10 +142,7 @@ def main():
             else:
                 fail += 1
                 if msg and "limite" in str(msg).lower():
-                    limite_atingido = True
-                    pool.shutdown(wait=False, cancel_futures=True)
-                    print(f"\n   [!] LIMITE DA API atingido após {done} consultas. Salvando...")
-                    break
+                    print(f"\n   [!] Mensagem com 'limite' recebida: {msg} (continuando...)")
 
             if done % 100 == 0 or done == total_api:
                 elapsed = time.time() - t0
@@ -177,8 +173,6 @@ def main():
     print(f"   API (OK):        {ok}")
     print(f"   API (falha):     {fail}")
     print(f"   Ainda sem valor: {ainda_sem} de {total}")
-    if limite_atingido:
-        print(f"   ⚠ Limite da API atingido — rode novamente amanhã para completar")
 
     print("\n6. Salvando arquivo final...")
     salvar(df, RELATORIO, SHEET)
