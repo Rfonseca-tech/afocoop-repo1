@@ -159,7 +159,7 @@ if error or df is None:
 st.sidebar.header("2. Filtros")
 
 all_months = df["MONTH"].unique().tolist()
-selected_months = st.sidebar.multiselect("Filtrar por Mês", all_months, default=all_months)
+selected_months = st.sidebar.multiselect("Filtrar por Mês", all_months_sorted, default=all_months_sorted)
 
 all_equip_types = df["EQUIPMENT_TYPE"].unique().tolist()
 selected_types = st.sidebar.multiselect("Filtrar por Tipo de Equip.", all_equip_types, default=all_equip_types)
@@ -276,6 +276,20 @@ st.plotly_chart(fig2, use_container_width=True)
 
 # Chart FAP — Faixas por Mês (contagem absoluta + % por faixa)
 BUCKET_ORDER = ["Até R$ 200k", "R$ 200k a R$ 300k", "R$ 300k a R$ 450k", "R$ 450k a R$ 600k", "Acima de R$ 600k", "Sem Valor Definido"]
+
+_MONTH_PT = {"Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4,
+             "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8,
+             "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12}
+
+def _month_sort_key(label):
+    try:
+        nome, ano = str(label).split("/")
+        return (int(ano), _MONTH_PT.get(nome.strip(), 0))
+    except Exception:
+        return (9999, 0)
+
+all_months_sorted = sorted(df["MONTH"].unique().tolist(), key=_month_sort_key)
+
 def hide_sem_valor_default(fig):
     for tr in fig.data:
         if getattr(tr, "name", None) == "Sem Valor Definido":
@@ -297,7 +311,7 @@ if "FUNDO" in filtered_df.columns:
         fig_fap_faixas = px.bar(
             fap_faixa, x="MONTH", y="COUNT", color="EQUIP_VAL_BUCKET",
             barmode="stack",
-            category_orders={"EQUIP_VAL_BUCKET": BUCKET_ORDER},
+            category_orders={"EQUIP_VAL_BUCKET": BUCKET_ORDER, "MONTH": all_months_sorted},
             title="FAP — Quantidade de Veículos por Faixa e Mês",
             labels={"COUNT": "Nº de Veículos", "MONTH": "Mês", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
             text="LABEL",
@@ -332,7 +346,7 @@ if "FUNDO" in filtered_df.columns:
         fig_comp = px.bar(
             comp, x="MONTH", y="PCT", color="EQUIP_VAL_BUCKET",
             barmode="stack",
-            category_orders={"EQUIP_VAL_BUCKET": BUCKET_ORDER},
+            category_orders={"EQUIP_VAL_BUCKET": BUCKET_ORDER, "MONTH": all_months_sorted},
             title=f"Composição por Faixa de Valor — {fundo_name}",
             labels={"PCT": "% de Veículos", "MONTH": "Mês", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
             text="LABEL",
@@ -344,7 +358,7 @@ if "FUNDO" in filtered_df.columns:
 
         # Top 10 por faixa — filtros de faixa e mês
         available_buckets = [b for b in BUCKET_ORDER if b in df_fundo["EQUIP_VAL_BUCKET"].unique()]
-        available_months = ["Acumulado"] + df_fundo["MONTH"].unique().tolist()
+        available_months = ["Acumulado"] + sorted(df_fundo["MONTH"].unique().tolist(), key=_month_sort_key)
 
         fc1, fc2 = st.columns(2)
         selected_bucket = fc1.selectbox(
@@ -499,25 +513,27 @@ else:
         .groupby("AGE_BUCKET", as_index=False)
         .head(3)
     )
-    top_ativadores["LABEL"] = top_ativadores["CURRENT_PAYMENT"].apply(lambda v: f"R$ {v:,.0f}")
+    entry_totals = top_ativadores.groupby("ENTRY_TYPE")["CURRENT_PAYMENT"].transform("sum")
+    top_ativadores["PCT"] = (top_ativadores["CURRENT_PAYMENT"] / entry_totals * 100).round(1)
+    top_ativadores["LABEL"] = top_ativadores["PCT"].apply(lambda v: f"{v:.1f}%")
 
     fig_ativadores = px.bar(
         top_ativadores,
-        x="CURRENT_PAYMENT",
+        x="PCT",
         y="ENTRY_TYPE",
         color="AGE_BUCKET",
         orientation="h",
         category_orders={"AGE_BUCKET": age_order},
         title="Maiores Ativadores do Seguro por Faixa de Idade da Frota (Top 3)",
         labels={
-            "CURRENT_PAYMENT": "Valor Total de Rateio (R$)",
+            "PCT": "% do Total",
             "ENTRY_TYPE": "Ativador",
             "AGE_BUCKET": "Faixa de Idade",
         },
         text="LABEL",
     )
-    fig_ativadores.update_traces(textposition="outside")
-    fig_ativadores.update_layout(yaxis_title="Ativador", xaxis_title="Valor Total de Rateio (R$)")
+    fig_ativadores.update_traces(textposition="inside", insidetextanchor="middle")
+    fig_ativadores.update_layout(yaxis_title="Ativador", xaxis_ticksuffix="%", xaxis_title="% do Total")
     st.plotly_chart(fig_ativadores, use_container_width=True)
 
 
