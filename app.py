@@ -155,6 +155,20 @@ if error or df is None:
     st.info("👈 O arquivo consolidado não foi encontrado na pasta correta.")
     st.stop()
 
+# Helpers para ordenação cronológica dos meses em PT-BR
+_MONTH_PT = {"Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4,
+             "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8,
+             "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12}
+
+def _month_sort_key(label):
+    try:
+        nome, ano = str(label).split("/")
+        return (int(ano), _MONTH_PT.get(nome.strip(), 0))
+    except Exception:
+        return (9999, 0)
+
+all_months_sorted = sorted(df["MONTH"].unique().tolist(), key=_month_sort_key)
+
 # Sidebar - Filters
 st.sidebar.header("2. Filtros")
 
@@ -276,19 +290,6 @@ st.plotly_chart(fig2, use_container_width=True)
 
 # Chart FAP — Faixas por Mês (contagem absoluta + % por faixa)
 BUCKET_ORDER = ["Até R$ 200k", "R$ 200k a R$ 300k", "R$ 300k a R$ 450k", "R$ 450k a R$ 600k", "Acima de R$ 600k", "Sem Valor Definido"]
-
-_MONTH_PT = {"Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4,
-             "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8,
-             "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12}
-
-def _month_sort_key(label):
-    try:
-        nome, ano = str(label).split("/")
-        return (int(ano), _MONTH_PT.get(nome.strip(), 0))
-    except Exception:
-        return (9999, 0)
-
-all_months_sorted = sorted(df["MONTH"].unique().tolist(), key=_month_sort_key)
 
 def hide_sem_valor_default(fig):
     for tr in fig.data:
