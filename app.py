@@ -307,7 +307,7 @@ if "FUNDO" in filtered_df.columns:
         fap_faixa.columns = ["MONTH", "EQUIP_VAL_BUCKET", "COUNT"]
         month_tot = fap_faixa.groupby("MONTH")["COUNT"].transform("sum")
         fap_faixa["PCT"] = (fap_faixa["COUNT"] / month_tot * 100).round(1)
-        fap_faixa["LABEL"] = fap_faixa.apply(lambda r: f"{r['PCT']:.1f}%\n{int(r['COUNT'])} veíc.", axis=1)
+        fap_faixa["LABEL"] = fap_faixa["COUNT"].apply(lambda v: f"{int(v)} veíc.")
 
         fig_fap_faixas = px.bar(
             fap_faixa, x="MONTH", y="COUNT", color="EQUIP_VAL_BUCKET",
@@ -342,7 +342,7 @@ if "FUNDO" in filtered_df.columns:
         comp.columns = ["MONTH", "EQUIP_VAL_BUCKET", "COUNT"]
         month_totals = comp.groupby("MONTH")["COUNT"].transform("sum")
         comp["PCT"] = (comp["COUNT"] / month_totals * 100).round(1)
-        comp["LABEL"] = comp.apply(lambda r: f"{r['PCT']:.1f}% | {int(r['COUNT'])} veíc.", axis=1)
+        comp["LABEL"] = comp["PCT"].apply(lambda v: f"{v:.1f}%")
 
         fig_comp = px.bar(
             comp, x="MONTH", y="PCT", color="EQUIP_VAL_BUCKET",
@@ -356,6 +356,21 @@ if "FUNDO" in filtered_df.columns:
         fig_comp.update_layout(yaxis_ticksuffix="%", legend_title_text="Faixa")
         hide_sem_valor_default(fig_comp)
         st.plotly_chart(fig_comp, use_container_width=True)
+
+        if fundo_name == "DPA":
+            comp["COUNT_LABEL"] = comp["COUNT"].apply(lambda v: f"{int(v)} veíc.")
+            fig_dpa_qtd = px.bar(
+                comp, x="MONTH", y="COUNT", color="EQUIP_VAL_BUCKET",
+                barmode="stack",
+                category_orders={"EQUIP_VAL_BUCKET": BUCKET_ORDER, "MONTH": all_months_sorted},
+                title="DPA — Quantidade de Veículos por Faixa e Mês",
+                labels={"COUNT": "Nº de Veículos", "MONTH": "Mês", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
+                text="COUNT_LABEL",
+            )
+            fig_dpa_qtd.update_traces(textposition="inside", insidetextanchor="middle")
+            fig_dpa_qtd.update_layout(legend_title_text="Faixa", yaxis_title="Nº de Veículos")
+            hide_sem_valor_default(fig_dpa_qtd)
+            st.plotly_chart(fig_dpa_qtd, use_container_width=True)
 
         # Top 10 por faixa — filtros de faixa e mês
         available_buckets = [b for b in BUCKET_ORDER if b in df_fundo["EQUIP_VAL_BUCKET"].unique()]
