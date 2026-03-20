@@ -277,39 +277,41 @@ pending_range_delete_idx = None
 
 for idx, row in enumerate(range_rows):
     rid = row["id"]
-    c1, c2, c3, c4, c5, c6 = st.sidebar.columns([1.6, 1.1, 1.1, 1.1, 0.5, 0.5])
-
-    row["label"] = c1.text_input(
+    top1, top2 = st.sidebar.columns([2.2, 1.1])
+    row["label"] = top1.text_input(
         "Nome",
         value=row.get("label", f"Faixa {idx + 1}"),
         key=f"range_label_{rid}",
         label_visibility="collapsed",
     )
-
-    start_txt = c2.text_input(
-        "Início",
-        value=_format_optional_float(row.get("start")),
-        key=f"range_start_{rid}",
-        label_visibility="collapsed",
-    )
-    end_txt = c3.text_input(
-        "Fim",
-        value=_format_optional_float(row.get("end")),
-        key=f"range_end_{rid}",
-        placeholder="vazio",
-        label_visibility="collapsed",
-    )
-    monthly_txt = c4.text_input(
+    monthly_txt = top2.text_input(
         "Mensalidade",
         value=_format_optional_float(row.get("monthly")),
         key=f"range_monthly_{rid}",
         label_visibility="collapsed",
     )
 
-    if c5.button("+", key=f"range_add_{rid}", help="Inserir faixa abaixo"):
+    bot1, bot2, bot3, bot4 = st.sidebar.columns([1.2, 1.2, 0.6, 0.6])
+    start_txt = bot1.text_input(
+        "Início",
+        value=_format_optional_float(row.get("start")),
+        key=f"range_start_{rid}",
+        label_visibility="collapsed",
+    )
+    end_txt = bot2.text_input(
+        "Fim",
+        value=_format_optional_float(row.get("end")),
+        key=f"range_end_{rid}",
+        placeholder="vazio",
+        label_visibility="collapsed",
+    )
+
+    if bot3.button("+", key=f"range_add_{rid}", help="Inserir faixa abaixo"):
         pending_range_add_after = idx
-    if c6.button("🗑️", key=f"range_del_{rid}", help="Remover faixa"):
+    if bot4.button("🗑️", key=f"range_del_{rid}", help="Remover faixa"):
         pending_range_delete_idx = idx
+
+    st.sidebar.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
 
     row["start"] = _parse_optional_float(start_txt)
     row["end"] = _parse_optional_float(end_txt)
@@ -455,6 +457,8 @@ for idx, row in enumerate(st.session_state.filter_config):
     else:
         options = sorted(df[field].dropna().unique().tolist(), key=_month_sort_key if field == "MONTH" else None)
         previous_selected = row.get("selected")
+        widget_key = f"filter_values_{fid}"
+        force_widget_sync = False
         if previous_selected is None:
             current_selected = options
         else:
@@ -467,15 +471,23 @@ for idx, row in enumerate(st.session_state.filter_config):
                 if stale_labels:
                     default_bucket_options = [b for b in options if b != "Sem Valor Definido"]
                     current_selected = sorted(set(current_selected + default_bucket_options))
+                    force_widget_sync = True
 
         if field == "EQUIP_VAL_BUCKET" and not current_selected:
             # Keep legacy default behavior when selection is empty.
             current_selected = [b for b in options if b != "Sem Valor Definido"]
+            force_widget_sync = True
+
+        # Streamlit keeps widget state by key and may ignore changed defaults.
+        # When faixa labels change, we must sync the widget state explicitly.
+        if force_widget_sync:
+            st.session_state[widget_key] = current_selected
+
         row["selected"] = st.sidebar.multiselect(
             f"Valores ({field})",
             options=options,
             default=current_selected,
-            key=f"filter_values_{fid}",
+            key=widget_key,
             label_visibility="collapsed",
         )
         row["query"] = ""
