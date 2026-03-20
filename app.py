@@ -454,13 +454,22 @@ for idx, row in enumerate(st.session_state.filter_config):
         row["selected"] = None
     else:
         options = sorted(df[field].dropna().unique().tolist(), key=_month_sort_key if field == "MONTH" else None)
-        current_selected = row.get("selected")
-        if current_selected is None:
+        previous_selected = row.get("selected")
+        if previous_selected is None:
             current_selected = options
-        current_selected = [x for x in current_selected if x in options]
+        else:
+            current_selected = [x for x in previous_selected if x in options]
+
+            if field == "EQUIP_VAL_BUCKET":
+                # If a faixa label was renamed, previous selection contains stale labels.
+                # In this case, auto-include newly available labels to avoid data disappearing.
+                stale_labels = [x for x in previous_selected if x not in options]
+                if stale_labels:
+                    default_bucket_options = [b for b in options if b != "Sem Valor Definido"]
+                    current_selected = sorted(set(current_selected + default_bucket_options))
+
         if field == "EQUIP_VAL_BUCKET" and not current_selected:
-            # If bucket labels were renamed, keep the app usable by auto-selecting
-            # all active buckets except "Sem Valor Definido" (legacy default behavior).
+            # Keep legacy default behavior when selection is empty.
             current_selected = [b for b in options if b != "Sem Valor Definido"]
         row["selected"] = st.sidebar.multiselect(
             f"Valores ({field})",
