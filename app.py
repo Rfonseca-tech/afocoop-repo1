@@ -458,6 +458,10 @@ for idx, row in enumerate(st.session_state.filter_config):
         if current_selected is None:
             current_selected = options
         current_selected = [x for x in current_selected if x in options]
+        if field == "EQUIP_VAL_BUCKET" and not current_selected:
+            # If bucket labels were renamed, keep the app usable by auto-selecting
+            # all active buckets except "Sem Valor Definido" (legacy default behavior).
+            current_selected = [b for b in options if b != "Sem Valor Definido"]
         row["selected"] = st.sidebar.multiselect(
             f"Valores ({field})",
             options=options,
