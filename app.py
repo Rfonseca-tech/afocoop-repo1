@@ -208,11 +208,8 @@ def _new_filter_row(field="MONTH", operator="in", selected=None, query=""):
 
 
 DEFAULT_RANGE_CONFIG = [
-    _range_row("Até R$ 200k", 0.0, 200000.0, 80.0),
-    _range_row("R$ 200k a R$ 300k", 200000.01, 300000.0, 120.0),
-    _range_row("R$ 300k a R$ 450k", 300000.01, 450000.0, 180.0),
-    _range_row("R$ 450k a R$ 600k", 450000.01, 600000.0, 250.0),
-    _range_row("Acima de R$ 600k", 600000.01, None, 350.0),
+    _range_row("Até R$ 300k", 0.0, 300000.0, 80.0),
+    _range_row("R$ 301k ao Infinito", 300000.01, None, 350.0),
 ]
 
 DEFAULT_FILTER_TEMPLATES = [
