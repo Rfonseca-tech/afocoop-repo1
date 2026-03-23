@@ -29,6 +29,19 @@ def _normalize_plate_series(series: pd.Series) -> pd.Series:
     return series.astype(str).str.strip().str.upper()
 
 
+def _normalize_equipment_type_series(series: pd.Series) -> pd.Series:
+    normalized = series.astype(str).str.strip().str.upper()
+    normalized = normalized.replace({"": pd.NA, "NAN": pd.NA, "NONE": pd.NA})
+    normalized = normalized.map(
+        lambda v: (
+            "CAVALO"
+            if pd.notna(v) and "CAV" in v
+            else ("CARRETA" if pd.notna(v) and ("CARRETA" in v or "SEMI" in v) else v)
+        )
+    )
+    return normalized.fillna("DESCONHECIDO")
+
+
 def _detect_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
     cols = {str(c).strip().lower(): c for c in df.columns}
     for cand in candidates:
@@ -251,7 +264,7 @@ def load_and_preprocess_data(file_path):
     df_raw["MANUFACTURE_YEAR"] = pd.to_numeric(df_raw["MANUFACTURE_YEAR"], errors="coerce")
     df_raw["MODEL_YEAR"] = pd.to_numeric(df_raw["MODEL_YEAR"], errors="coerce")
 
-    df_raw["EQUIPMENT_TYPE"] = df_raw["EQUIPMENT_TYPE"].fillna("Desconhecido")
+    df_raw["EQUIPMENT_TYPE"] = _normalize_equipment_type_series(df_raw["EQUIPMENT_TYPE"])
     df_raw["EQUIPMENT_BRAND"] = df_raw["EQUIPMENT_BRAND"].fillna("Desconhecido")
     df_raw["EQUIPMENT_MODEL"] = df_raw["EQUIPMENT_MODEL"].fillna("Desconhecido")
     df_raw["ENTRY_TYPE"] = df_raw["ENTRY_TYPE"].fillna("Desconhecido")
