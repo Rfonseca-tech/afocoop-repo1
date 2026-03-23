@@ -264,38 +264,72 @@ all_months_sorted = sorted(df["MONTH"].unique().tolist(), key=_month_sort_key)
 # ---------------------------------------------------------------------------
 st.markdown("---")
 tab_boleto_fap = st.tabs(["Boleto - FAP"])[0]
+
+if "boleto_fap_mensal" not in st.session_state:
+    st.session_state.boleto_fap_mensal = pd.DataFrame(
+        {
+            "Mês": all_months_sorted,
+            "Quantidade de Cavalos": [0 for _ in all_months_sorted],
+            "Valor Total do Rateio": [0.0 for _ in all_months_sorted],
+            "Participação": [0.0 for _ in all_months_sorted],
+        }
+    )
+else:
+    previous_boleto = st.session_state.boleto_fap_mensal.copy()
+    if "Mês" in previous_boleto.columns:
+        previous_map = previous_boleto.set_index("Mês")
+        synced_rows = []
+        for month in all_months_sorted:
+            if month in previous_map.index:
+                row = previous_map.loc[month]
+                synced_rows.append(
+                    {
+                        "Mês": month,
+                        "Quantidade de Cavalos": int(pd.to_numeric(row.get("Quantidade de Cavalos", 0), errors="coerce") or 0),
+                        "Valor Total do Rateio": float(pd.to_numeric(row.get("Valor Total do Rateio", 0.0), errors="coerce") or 0.0),
+                        "Participação": float(pd.to_numeric(row.get("Participação", 0.0), errors="coerce") or 0.0),
+                    }
+                )
+            else:
+                synced_rows.append(
+                    {
+                        "Mês": month,
+                        "Quantidade de Cavalos": 0,
+                        "Valor Total do Rateio": 0.0,
+                        "Participação": 0.0,
+                    }
+                )
+        st.session_state.boleto_fap_mensal = pd.DataFrame(synced_rows)
+
 with tab_boleto_fap:
-    st.subheader("Boleto - FAP — Campos Manuais e Automático")
-    st.caption("Linhas 3, 4 e 5 são preenchidas manualmente. A linha 6 é calculada automaticamente.")
+    st.subheader("Boleto - FAP — Por Mês")
+    st.caption("Preencha manualmente as linhas 3, 4 e 5 por mês. A linha 6 é calculada automaticamente em cada mês.")
 
-    b_col1, b_col2 = st.columns([1.3, 1.0])
+    boleto_df = st.session_state.boleto_fap_mensal.copy()
+    boleto_df["Valor do Boleto"] = np.where(
+        boleto_df["Quantidade de Cavalos"] > 0,
+        (boleto_df["Valor Total do Rateio"] + boleto_df["Participação"]) / boleto_df["Quantidade de Cavalos"],
+        0.0,
+    )
 
-    with b_col1:
-        qtd_cavalos = st.number_input(
-            "3 - Quantidade de Cavalos (Manual)",
-            min_value=1,
-            value=1,
-            step=1,
-            format="%d",
-        )
-        valor_total_rateio = st.number_input(
-            "4 - Valor Total do Rateio (Manual)",
-            min_value=0.0,
-            value=0.0,
-            step=100.0,
-            format="%.2f",
-        )
-        participacao = st.number_input(
-            "5 - Participação (Manual)",
-            value=0.0,
-            step=100.0,
-            format="%.2f",
-        )
+    edited_boleto_df = st.data_editor(
+        boleto_df,
+        hide_index=True,
+        use_container_width=True,
+        disabled=["Mês", "Valor do Boleto"],
+        column_config={
+            "Mês": st.column_config.TextColumn("Mês"),
+            "Quantidade de Cavalos": st.column_config.NumberColumn("3 - Quantidade de Cavalos", min_value=0, step=1, format="%d"),
+            "Valor Total do Rateio": st.column_config.NumberColumn("4 - Valor Total do Rateio", format="R$ %.2f", step=100.0),
+            "Participação": st.column_config.NumberColumn("5 - Participação", format="R$ %.2f", step=100.0),
+            "Valor do Boleto": st.column_config.NumberColumn("6 - Valor do Boleto (Automático)", format="R$ %.2f"),
+        },
+        key="boleto_fap_editor",
+    )
 
-    with b_col2:
-        valor_boleto = (valor_total_rateio + participacao) / qtd_cavalos if qtd_cavalos else 0.0
-        st.metric("6 - Valor do Boleto (Automático)", f"R$ {valor_boleto:,.2f}")
-        st.code("=(Valor Total do Rateio + Participação) / Quantidade de Cavalos")
+    st.session_state.boleto_fap_mensal = edited_boleto_df[
+        ["Mês", "Quantidade de Cavalos", "Valor Total do Rateio", "Participação"]
+    ].copy()
 
 
 # ---------------------------------------------------------------------------
