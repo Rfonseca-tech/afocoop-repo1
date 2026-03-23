@@ -79,6 +79,55 @@ def _extract_plate_value_map_from_file(file_path: Path) -> dict[str, float]:
     return mapping
 
 
+def _extract_plate_year_map_from_file(file_path: Path) -> dict[str, dict[str, float]]:
+    """Extract best known manufacture/model years by plate from one workbook."""
+    mapping: dict[str, dict[str, float]] = {}
+    manuf_candidates = ["Ano Fabricação", "Ano Fabricacao", "MANUFACTURE_YEAR", "ANO FABRICACAO"]
+    model_candidates = ["Ano Modelo", "MODEL_YEAR", "ANO MODELO"]
+
+    try:
+        xls = pd.ExcelFile(file_path)
+    except Exception:
+        return mapping
+
+    for sheet in xls.sheet_names:
+        try:
+            df = pd.read_excel(file_path, sheet_name=sheet)
+        except Exception:
+            continue
+
+        plate_col = _detect_column(df, PLATE_COL_CANDIDATES)
+        manuf_col = _detect_column(df, manuf_candidates)
+        model_col = _detect_column(df, model_candidates)
+        if plate_col is None or (manuf_col is None and model_col is None):
+            continue
+
+        sub = pd.DataFrame({"PLATE": _normalize_plate_series(df[plate_col])})
+        sub["MANUF"] = pd.to_numeric(df[manuf_col], errors="coerce") if manuf_col else pd.NA
+        sub["MODEL"] = pd.to_numeric(df[model_col], errors="coerce") if model_col else pd.NA
+        sub = sub[
+            sub["PLATE"].notna()
+            & ~sub["PLATE"].isin(["", "NAN", "NONE", "TOTAL", "PLACA"])
+            & (sub["MANUF"].notna() | sub["MODEL"].notna())
+        ]
+        if sub.empty:
+            continue
+
+        grouped = sub.groupby("PLATE", as_index=False).agg({"MANUF": "max", "MODEL": "max"})
+        for _, row in grouped.iterrows():
+            plate = str(row["PLATE"]).strip().upper()
+            manuf = row["MANUF"]
+            model = row["MODEL"]
+            prev = mapping.get(plate, {"MANUF": pd.NA, "MODEL": pd.NA})
+            if pd.notna(manuf):
+                prev["MANUF"] = manuf if pd.isna(prev["MANUF"]) else max(prev["MANUF"], manuf)
+            if pd.notna(model):
+                prev["MODEL"] = model if pd.isna(prev["MODEL"]) else max(prev["MODEL"], model)
+            mapping[plate] = prev
+
+    return mapping
+
+
 @st.cache_data(ttl=300)
 def _load_external_equipment_value_map(base_dir_str: str) -> dict[str, float]:
     """
@@ -107,6 +156,40 @@ def _load_external_equipment_value_map(base_dir_str: str) -> dict[str, float]:
             previous = merged_map.get(plate)
             if previous is None or value > previous:
                 merged_map[plate] = value
+
+    return merged_map
+
+
+@st.cache_data(ttl=300)
+def _load_external_year_map(base_dir_str: str) -> dict[str, dict[str, float]]:
+    """Build plate -> {MANUF, MODEL} from fragmented external sources."""
+    base_dir = Path(base_dir_str)
+    file_candidates: set[Path] = set()
+
+    patterns = [
+        "AFOOCOP_Base_Veiculos_Unificada.xlsx",
+        "*Base_Veiculos_Unificada*.xlsx",
+        "backup_unused*/AFOOCOP_Base_Veiculos_Unificada.xlsx",
+        "backup_unused*/**/*RELATÓRIO DE VEÍCULOS ATIVOS*.xlsx",
+        "**/*RELATÓRIO DE VEÍCULOS ATIVOS*.xlsx",
+    ]
+    for pattern in patterns:
+        file_candidates.update(base_dir.glob(pattern))
+
+    merged_map: dict[str, dict[str, float]] = {}
+    for file_path in sorted(file_candidates):
+        if not file_path.is_file():
+            continue
+        partial_map = _extract_plate_year_map_from_file(file_path)
+        for plate, years in partial_map.items():
+            prev = merged_map.get(plate, {"MANUF": pd.NA, "MODEL": pd.NA})
+            manuf = years.get("MANUF")
+            model = years.get("MODEL")
+            if pd.notna(manuf):
+                prev["MANUF"] = manuf if pd.isna(prev["MANUF"]) else max(prev["MANUF"], manuf)
+            if pd.notna(model):
+                prev["MODEL"] = model if pd.isna(prev["MODEL"]) else max(prev["MODEL"], model)
+            merged_map[plate] = prev
 
     return merged_map
 
@@ -187,6 +270,20 @@ def load_and_preprocess_data(file_path):
         external_value = df_raw["LICENSE_PLATE"].map(external_map)
         external_fill_mask = (df_raw["EQUIPMENT_VALUE"] <= 0) & external_value.notna() & (external_value > 0)
         df_raw.loc[external_fill_mask, "EQUIPMENT_VALUE"] = external_value[external_fill_mask]
+
+    # Enriquecimento de ano de fabricação/modelo por placa.
+    external_year_map = _load_external_year_map(str(Path(file_path).parent))
+    if external_year_map:
+        manuf_map = {k: v.get("MANUF") for k, v in external_year_map.items()}
+        model_map = {k: v.get("MODEL") for k, v in external_year_map.items()}
+        ext_manuf = pd.to_numeric(df_raw["LICENSE_PLATE"].map(manuf_map), errors="coerce")
+        ext_model = pd.to_numeric(df_raw["LICENSE_PLATE"].map(model_map), errors="coerce")
+
+        manuf_missing = df_raw["MANUFACTURE_YEAR"].isna() | (df_raw["MANUFACTURE_YEAR"] <= 0)
+        model_missing = df_raw["MODEL_YEAR"].isna() | (df_raw["MODEL_YEAR"] <= 0)
+
+        df_raw.loc[manuf_missing & ext_manuf.notna(), "MANUFACTURE_YEAR"] = ext_manuf[manuf_missing & ext_manuf.notna()]
+        df_raw.loc[model_missing & ext_model.notna(), "MODEL_YEAR"] = ext_model[model_missing & ext_model.notna()]
 
     agg_funcs = {
         "TRANSACTION_AMOUNT": "sum",
@@ -1140,17 +1237,36 @@ st.markdown("---")
 st.subheader("Idade da Frota e Ativadores do Seguro")
 
 age_base = (
-    filtered_df.sort_values("MONTH")
-    .groupby("LICENSE_PLATE", as_index=False)
+    filtered_df.groupby("LICENSE_PLATE", as_index=False)
     .agg(
-        FLEET_AGE=("FLEET_AGE", "first"),
-        AGE_BUCKET=("AGE_BUCKET", "first"),
+        FLEET_AGE=("FLEET_AGE", "max"),
         CURRENT_PAYMENT_TOTAL=("CURRENT_PAYMENT", "sum"),
         ENTRY_TYPE=("ENTRY_TYPE", "first"),
         EQUIPMENT_BRAND=("EQUIPMENT_BRAND", "first"),
         EQUIPMENT_MODEL=("EQUIPMENT_MODEL", "first"),
     )
 )
+
+def _age_bucket_from_value(age):
+    if pd.isna(age):
+        return "Não informado"
+    if age <= 2:
+        return "0 a 2 anos"
+    if age <= 5:
+        return "3 a 5 anos"
+    if age <= 8:
+        return "6 a 8 anos"
+    if age <= 12:
+        return "9 a 12 anos"
+    return "13+ anos"
+
+age_base["AGE_BUCKET"] = age_base["FLEET_AGE"].apply(_age_bucket_from_value)
+
+age_base_all = (
+    df.groupby("LICENSE_PLATE", as_index=False)
+    .agg(FLEET_AGE=("FLEET_AGE", "max"))
+)
+age_base_all_valid = age_base_all[age_base_all["FLEET_AGE"].notna()]
 
 age_valid = age_base[age_base["FLEET_AGE"].notna()].copy()
 
@@ -1162,7 +1278,8 @@ else:
 
     m1, m2 = st.columns(2)
     m1.metric("Idade média da frota", f"{avg_fleet_age:.1f} anos")
-    m2.metric("Veículos com idade calculada", f"{age_valid['LICENSE_PLATE'].nunique():,}")
+    m2.metric("Veículos com idade calculada (após filtros)", f"{age_valid['LICENSE_PLATE'].nunique():,}")
+    m2.caption(f"Base total com idade: {age_base_all_valid['LICENSE_PLATE'].nunique():,}")
 
     dist_age = age_base.groupby("AGE_BUCKET", as_index=False)["LICENSE_PLATE"].count().rename(columns={"LICENSE_PLATE": "COUNT"})
     fig_age_dist = px.bar(
@@ -1180,13 +1297,15 @@ else:
         r = out_age[["AGE_BUCKET", "COUNT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
         r.insert(0, "GRAFICO", "Distribuição da Frota por Faixa de Idade")
         outlier_reports.append(r)
-    fig_age_dist.update_traces(textposition="outside")
+    fig_age_dist.update_traces(textposition="outside", selector=dict(type="bar"))
     fig_age_dist.update_layout(xaxis_title="Faixa de Idade", yaxis_title="Nº de Veículos")
     st.plotly_chart(fig_age_dist, use_container_width=True)
 
+    ativadores_source = filtered_df[filtered_df["FLEET_AGE"].notna()].copy()
+    ativadores_source["AGE_BUCKET"] = ativadores_source["FLEET_AGE"].apply(_age_bucket_from_value)
+    ativadores_source["ENTRY_TYPE"] = ativadores_source["ENTRY_TYPE"].fillna("Desconhecido")
     ativadores = (
-        filtered_df[filtered_df["FLEET_AGE"].notna()]
-        .groupby(["AGE_BUCKET", "ENTRY_TYPE"], as_index=False)["CURRENT_PAYMENT"]
+        ativadores_source.groupby(["AGE_BUCKET", "ENTRY_TYPE"], as_index=False)["CURRENT_PAYMENT"]
         .sum()
     )
     top_ativadores = (
