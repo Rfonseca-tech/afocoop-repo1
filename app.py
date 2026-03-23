@@ -260,6 +260,45 @@ all_months_sorted = sorted(df["MONTH"].unique().tolist(), key=_month_sort_key)
 
 
 # ---------------------------------------------------------------------------
+# 3.5 Boleto Inputs (Manual + Formula)
+# ---------------------------------------------------------------------------
+st.markdown("---")
+tab_boleto_fap = st.tabs(["Boleto - FAP"])[0]
+with tab_boleto_fap:
+    st.subheader("Boleto - FAP — Campos Manuais e Automático")
+    st.caption("Linhas 3, 4 e 5 são preenchidas manualmente. A linha 6 é calculada automaticamente.")
+
+    b_col1, b_col2 = st.columns([1.3, 1.0])
+
+    with b_col1:
+        qtd_cavalos = st.number_input(
+            "3 - Quantidade de Cavalos (Manual)",
+            min_value=1,
+            value=1,
+            step=1,
+            format="%d",
+        )
+        valor_total_rateio = st.number_input(
+            "4 - Valor Total do Rateio (Manual)",
+            min_value=0.0,
+            value=0.0,
+            step=100.0,
+            format="%.2f",
+        )
+        participacao = st.number_input(
+            "5 - Participação (Manual)",
+            value=0.0,
+            step=100.0,
+            format="%.2f",
+        )
+
+    with b_col2:
+        valor_boleto = (valor_total_rateio + participacao) / qtd_cavalos if qtd_cavalos else 0.0
+        st.metric("6 - Valor do Boleto (Automático)", f"R$ {valor_boleto:,.2f}")
+        st.code("=(Valor Total do Rateio + Participação) / Quantidade de Cavalos")
+
+
+# ---------------------------------------------------------------------------
 # 4. Sidebar: Configurable Ranges
 # ---------------------------------------------------------------------------
 st.sidebar.header("2. Faixas de Cobrança")
