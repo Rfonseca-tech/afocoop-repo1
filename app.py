@@ -439,12 +439,19 @@ if range_errors:
 
 # Apply configured ranges globally to keep all app outputs in sync
 df = df.copy()
-year_from_month_date = pd.to_datetime(df.get("MONTH_DATE"), errors="coerce").dt.year
-year_from_month_label = (
+month_date_series = (
+    df["MONTH_DATE"]
+    if "MONTH_DATE" in df.columns
+    else pd.Series(pd.NA, index=df.index)
+)
+month_label_series = (
     df["MONTH"]
-    .astype("string")
-    .str.extract(r"/(\d{4})$")[0]
-    .astype("Int64")
+    if "MONTH" in df.columns
+    else pd.Series(pd.NA, index=df.index)
+)
+year_from_month_date = pd.to_datetime(month_date_series, errors="coerce").dt.year
+year_from_month_label = (
+    month_label_series.astype("string").str.extract(r"/(\d{4})$")[0].astype("Int64")
 )
 df["YEAR"] = year_from_month_date.fillna(year_from_month_label).astype("Int64").astype("string")
 df[["EQUIP_VAL_BUCKET", "SIMULATED_PAYMENT_BASE"]] = df.apply(
