@@ -216,6 +216,7 @@ DEFAULT_RANGE_CONFIG = [
 ]
 
 DEFAULT_FILTER_TEMPLATES = [
+    {"field": "YEAR", "operator": "in"},
     {"field": "MONTH", "operator": "in"},
     {"field": "EQUIPMENT_TYPE", "operator": "in"},
     {"field": "EQUIPMENT_BRAND", "operator": "in"},
@@ -441,6 +442,7 @@ if range_errors:
 
 # Apply configured ranges globally to keep all app outputs in sync
 df = df.copy()
+df["YEAR"] = pd.to_datetime(df["MONTH"], errors="coerce").dt.year.astype("Int64").astype(str)
 df[["EQUIP_VAL_BUCKET", "SIMULATED_PAYMENT_BASE"]] = df.apply(
     lambda row: pd.Series(_assign_range(row["EQUIPMENT_VALUE"], active_ranges)),
     axis=1,
@@ -456,6 +458,7 @@ st.sidebar.caption("Filtros configuráveis por linha. Você pode adicionar quant
 filterable_fields = []
 for c in df.columns:
     if c in [
+        "YEAR",
         "MONTH",
         "EQUIPMENT_TYPE",
         "EQUIPMENT_BRAND",
@@ -478,7 +481,16 @@ if "filter_config" not in st.session_state:
             selected = [b for b in options if b != "Sem Valor Definido"]
             initial_filters.append(_new_filter_row(field="EQUIP_VAL_BUCKET", operator="in", selected=selected))
         elif op == "in":
-            options = sorted(df[field].dropna().unique().tolist(), key=_month_sort_key if field == "MONTH" else None)
+            options = sorted(
+                df[field].dropna().unique().tolist(),
+                key=(
+                    _month_sort_key
+                    if field == "MONTH"
+                    else (lambda x: int(x) if str(x).isdigit() else str(x))
+                    if field == "YEAR"
+                    else None
+                ),
+            )
             initial_filters.append(_new_filter_row(field=field, operator="in", selected=options))
         else:
             initial_filters.append(_new_filter_row(field=field, operator="contains", query=""))
@@ -528,7 +540,16 @@ for idx, row in enumerate(st.session_state.filter_config):
         )
         row["selected"] = None
     else:
-        options = sorted(df[field].dropna().unique().tolist(), key=_month_sort_key if field == "MONTH" else None)
+        options = sorted(
+            df[field].dropna().unique().tolist(),
+            key=(
+                _month_sort_key
+                if field == "MONTH"
+                else (lambda x: int(x) if str(x).isdigit() else str(x))
+                if field == "YEAR"
+                else None
+            ),
+        )
         previous_selected = row.get("selected")
         widget_key = f"filter_values_{fid}"
         force_widget_sync = False
