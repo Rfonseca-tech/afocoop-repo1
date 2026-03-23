@@ -1,6 +1,7 @@
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,103 @@ st.set_page_config(page_title="AFOOCOP Pricing Simulator", layout="wide")
 # ---------------------------------------------------------------------------
 # 1. Data Loading & Preprocessing
 # ---------------------------------------------------------------------------
+PLATE_COL_CANDIDATES = ["PLACA", "Placa", "placa", "LICENSE_PLATE", "License Plate"]
+VALUE_COL_CANDIDATES = [
+    "VALOR_EQUIPAMENTO",
+    "Valor Equipamento",
+    "EQUIPMENT_VALUE",
+    "VALOR FIPE",
+    "Valor Fipe",
+    "FIPE",
+]
+
+
+def _normalize_plate_series(series: pd.Series) -> pd.Series:
+    return series.astype(str).str.strip().str.upper()
+
+
+def _detect_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    cols = {str(c).strip().lower(): c for c in df.columns}
+    for cand in candidates:
+        if cand.lower() in cols:
+            return cols[cand.lower()]
+    return None
+
+
+def _extract_plate_value_map_from_file(file_path: Path) -> dict[str, float]:
+    """Extract best known equipment value by plate from one workbook."""
+    mapping: dict[str, float] = {}
+    try:
+        xls = pd.ExcelFile(file_path)
+    except Exception:
+        return mapping
+
+    for sheet in xls.sheet_names:
+        try:
+            df = pd.read_excel(file_path, sheet_name=sheet)
+        except Exception:
+            continue
+
+        plate_col = _detect_column(df, PLATE_COL_CANDIDATES)
+        value_col = _detect_column(df, VALUE_COL_CANDIDATES)
+        if plate_col is None or value_col is None:
+            continue
+
+        sub = df[[plate_col, value_col]].copy()
+        sub[plate_col] = _normalize_plate_series(sub[plate_col])
+        sub[value_col] = pd.to_numeric(sub[value_col], errors="coerce")
+        sub = sub[
+            sub[plate_col].notna()
+            & ~sub[plate_col].isin(["", "NAN", "NONE", "TOTAL", "PLACA"])
+            & sub[value_col].notna()
+            & (sub[value_col] > 0)
+        ]
+        if sub.empty:
+            continue
+
+        grouped = sub.groupby(plate_col, as_index=False)[value_col].max()
+        for _, row in grouped.iterrows():
+            plate = str(row[plate_col]).strip().upper()
+            value = float(row[value_col])
+            previous = mapping.get(plate)
+            if previous is None or value > previous:
+                mapping[plate] = value
+
+    return mapping
+
+
+@st.cache_data(ttl=300)
+def _load_external_equipment_value_map(base_dir_str: str) -> dict[str, float]:
+    """
+    Build a plate -> equipment_value map from external fragmented sources.
+    Priority is achieved naturally by taking max known value per plate.
+    """
+    base_dir = Path(base_dir_str)
+    file_candidates: set[Path] = set()
+
+    patterns = [
+        "AFOOCOP_Base_Veiculos_Unificada.xlsx",
+        "*Base_Veiculos_Unificada*.xlsx",
+        "backup_unused*/AFOOCOP_Base_Veiculos_Unificada.xlsx",
+        "backup_unused*/**/*RELATÓRIO DE VEÍCULOS ATIVOS*.xlsx",
+        "**/*RELATÓRIO DE VEÍCULOS ATIVOS*.xlsx",
+    ]
+    for pattern in patterns:
+        file_candidates.update(base_dir.glob(pattern))
+
+    merged_map: dict[str, float] = {}
+    for file_path in sorted(file_candidates):
+        if not file_path.is_file():
+            continue
+        partial_map = _extract_plate_value_map_from_file(file_path)
+        for plate, value in partial_map.items():
+            previous = merged_map.get(plate)
+            if previous is None or value > previous:
+                merged_map[plate] = value
+
+    return merged_map
+
+
 @st.cache_data(ttl=5)
 def load_and_preprocess_data(file_path):
     try:
@@ -64,6 +162,7 @@ def load_and_preprocess_data(file_path):
         if c not in df_raw.columns:
             df_raw[c] = np.nan if c in ["EQUIPMENT_VALUE", "TRANSACTION_AMOUNT", "MANUFACTURE_YEAR", "MODEL_YEAR"] else "Unknown"
 
+    df_raw["LICENSE_PLATE"] = _normalize_plate_series(df_raw["LICENSE_PLATE"])
     df_raw["EQUIPMENT_VALUE"] = pd.to_numeric(df_raw["EQUIPMENT_VALUE"], errors="coerce").fillna(0)
     df_raw["TRANSACTION_AMOUNT"] = pd.to_numeric(df_raw["TRANSACTION_AMOUNT"], errors="coerce").fillna(0)
     df_raw["MANUFACTURE_YEAR"] = pd.to_numeric(df_raw["MANUFACTURE_YEAR"], errors="coerce")
@@ -74,9 +173,25 @@ def load_and_preprocess_data(file_path):
     df_raw["EQUIPMENT_MODEL"] = df_raw["EQUIPMENT_MODEL"].fillna("Desconhecido")
     df_raw["ENTRY_TYPE"] = df_raw["ENTRY_TYPE"].fillna("Desconhecido")
 
+    # Backfill do valor de equipamento por placa:
+    # várias linhas de rateio vêm sem FIPE, mas a mesma placa costuma ter valor
+    # preenchido em outro mês/lançamento da base consolidada.
+    plate_max_value = df_raw.groupby("LICENSE_PLATE")["EQUIPMENT_VALUE"].transform("max")
+    missing_equip_value = (df_raw["EQUIPMENT_VALUE"] <= 0) & (plate_max_value > 0)
+    df_raw.loc[missing_equip_value, "EQUIPMENT_VALUE"] = plate_max_value[missing_equip_value]
+
+    # Enriquecimento adicional por fontes externas fragmentadas.
+    # Ex.: base de veículos unificada e relatórios de veículos ativos.
+    external_map = _load_external_equipment_value_map(str(Path(file_path).parent))
+    if external_map:
+        external_value = df_raw["LICENSE_PLATE"].map(external_map)
+        external_fill_mask = (df_raw["EQUIPMENT_VALUE"] <= 0) & external_value.notna() & (external_value > 0)
+        df_raw.loc[external_fill_mask, "EQUIPMENT_VALUE"] = external_value[external_fill_mask]
+
     agg_funcs = {
         "TRANSACTION_AMOUNT": "sum",
-        "EQUIPMENT_VALUE": "first",
+        # Para evitar "Sem Valor Definido" indevido quando há múltiplas linhas no mês.
+        "EQUIPMENT_VALUE": "max",
         "EQUIPMENT_TYPE": "first",
         "EQUIPMENT_BRAND": "first",
         "EQUIPMENT_MODEL": "first",
@@ -676,10 +791,102 @@ col2.metric("Média Valor FIPE", f"R$ {avg_equip_val:,.2f}")
 st.markdown("---")
 st.subheader("Análise Visual")
 
+def detect_outliers_iqr(
+    df: pd.DataFrame,
+    value_col: str,
+    group_cols: list[str] | None = None,
+    iqr_multiplier: float = 1.5,
+    min_group_size: int = 4,
+) -> pd.DataFrame:
+    """Detect outliers using IQR, optionally per group."""
+    if value_col not in df.columns or df.empty:
+        return pd.DataFrame()
+
+    work = df.copy()
+    work[value_col] = pd.to_numeric(work[value_col], errors="coerce")
+    work = work[work[value_col].notna()].copy()
+    if work.empty:
+        return pd.DataFrame()
+
+    if group_cols:
+        valid_groups = [c for c in group_cols if c in work.columns]
+    else:
+        valid_groups = []
+
+    if not valid_groups:
+        q1 = work[value_col].quantile(0.25)
+        q3 = work[value_col].quantile(0.75)
+        iqr = q3 - q1
+        lower = q1 - iqr_multiplier * iqr
+        upper = q3 + iqr_multiplier * iqr
+        out = work[(work[value_col] < lower) | (work[value_col] > upper)].copy()
+        out["OUTLIER_LOWER"] = lower
+        out["OUTLIER_UPPER"] = upper
+        return out
+
+    out_frames = []
+    for _, g in work.groupby(valid_groups, dropna=False):
+        if len(g) < min_group_size:
+            continue
+        q1 = g[value_col].quantile(0.25)
+        q3 = g[value_col].quantile(0.75)
+        iqr = q3 - q1
+        lower = q1 - iqr_multiplier * iqr
+        upper = q3 + iqr_multiplier * iqr
+        o = g[(g[value_col] < lower) | (g[value_col] > upper)].copy()
+        if not o.empty:
+            o["OUTLIER_LOWER"] = lower
+            o["OUTLIER_UPPER"] = upper
+            out_frames.append(o)
+    if not out_frames:
+        return pd.DataFrame()
+    return pd.concat(out_frames, ignore_index=True)
+
+
+def add_outlier_markers(
+    fig,
+    outliers: pd.DataFrame,
+    x_col: str,
+    y_col: str,
+    orientation: str = "v",
+):
+    if outliers.empty:
+        return fig
+    if orientation == "h":
+        fig.add_scatter(
+            x=outliers[x_col],
+            y=outliers[y_col],
+            mode="markers+text",
+            text=["⚠"] * len(outliers),
+            textposition="middle right",
+            marker=dict(color="#dc2626", size=10, symbol="x"),
+            name="Discrepância",
+        )
+    else:
+        fig.add_scatter(
+            x=outliers[x_col],
+            y=outliers[y_col],
+            mode="markers+text",
+            text=["⚠"] * len(outliers),
+            textposition="top center",
+            marker=dict(color="#dc2626", size=10, symbol="x"),
+            name="Discrepância",
+        )
+    return fig
+
+
+outlier_reports: list[pd.DataFrame] = []
+
 bracket_totals = filtered_df.groupby("BRACKET_NAME").agg(
     COUNT=("LICENSE_PLATE", "count"),
     SIMULATED_REVENUE=("SIMULATED_PAYMENT", "sum"),
 ).reset_index()
+
+pie_outliers = detect_outliers_iqr(bracket_totals, "COUNT")
+if not pie_outliers.empty:
+    r = pie_outliers[["BRACKET_NAME", "COUNT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
+    r.insert(0, "GRAFICO", "Distribuição por Faixa (Pie)")
+    outlier_reports.append(r)
 
 fig2 = px.pie(
     bracket_totals,
@@ -725,6 +932,12 @@ if "FUNDO" in filtered_df.columns:
             labels={"COUNT": "Nº de Veículos", "MONTH": "Mês", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
             text="LABEL",
         )
+        out_fap = detect_outliers_iqr(fap_faixa, "COUNT", group_cols=["EQUIP_VAL_BUCKET"])
+        if not out_fap.empty:
+            fig_fap_faixas = add_outlier_markers(fig_fap_faixas, out_fap, "MONTH", "COUNT", orientation="v")
+            r = out_fap[["MONTH", "EQUIP_VAL_BUCKET", "COUNT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
+            r.insert(0, "GRAFICO", "FAP — Quantidade por Faixa e Mês")
+            outlier_reports.append(r)
         fig_fap_faixas.update_traces(textposition="inside", insidetextanchor="middle")
         fig_fap_faixas.update_layout(legend_title_text="Faixa", yaxis_title="Nº de Veículos")
         hide_sem_valor_default(fig_fap_faixas)
@@ -760,6 +973,12 @@ if "FUNDO" in filtered_df.columns:
             labels={"PCT": "% de Veículos", "MONTH": "Mês", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
             text="LABEL",
         )
+        out_comp = detect_outliers_iqr(comp, "PCT", group_cols=["EQUIP_VAL_BUCKET"])
+        if not out_comp.empty:
+            fig_comp = add_outlier_markers(fig_comp, out_comp, "MONTH", "PCT", orientation="v")
+            r = out_comp[["MONTH", "EQUIP_VAL_BUCKET", "PCT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
+            r.insert(0, "GRAFICO", f"{fundo_name} — Composição por Faixa")
+            outlier_reports.append(r)
         fig_comp.update_traces(textposition="inside", insidetextanchor="middle")
         fig_comp.update_layout(yaxis_ticksuffix="%", legend_title_text="Faixa")
         hide_sem_valor_default(fig_comp)
@@ -778,6 +997,12 @@ if "FUNDO" in filtered_df.columns:
                 labels={"COUNT": "Nº de Veículos", "MONTH": "Mês", "EQUIP_VAL_BUCKET": "Faixa de Valor"},
                 text="COUNT_LABEL",
             )
+            out_dpa_qtd = detect_outliers_iqr(comp, "COUNT", group_cols=["EQUIP_VAL_BUCKET"])
+            if not out_dpa_qtd.empty:
+                fig_dpa_qtd = add_outlier_markers(fig_dpa_qtd, out_dpa_qtd, "MONTH", "COUNT", orientation="v")
+                r = out_dpa_qtd[["MONTH", "EQUIP_VAL_BUCKET", "COUNT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
+                r.insert(0, "GRAFICO", "DPA — Quantidade por Faixa e Mês")
+                outlier_reports.append(r)
             fig_dpa_qtd.update_traces(textposition="inside", insidetextanchor="middle")
             fig_dpa_qtd.update_layout(legend_title_text="Faixa", yaxis_title="Nº de Veículos")
             hide_sem_valor_default(fig_dpa_qtd)
@@ -830,6 +1055,12 @@ if "FUNDO" in filtered_df.columns:
             labels={"PCT": "% de Veículos", "MARCA_MODELO": "Marca / Modelo"},
             text="LABEL",
         )
+        out_top = detect_outliers_iqr(top10, "PCT")
+        if not out_top.empty:
+            fig_top = add_outlier_markers(fig_top, out_top, "PCT", "MARCA_MODELO", orientation="h")
+            r = out_top[["MARCA_MODELO", "PCT", "COUNT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
+            r.insert(0, "GRAFICO", f"{fundo_name} — Top 10 Marcas/Equipamentos")
+            outlier_reports.append(r)
         fig_top.update_traces(textposition="inside", insidetextanchor="middle")
         fig_top.update_layout(xaxis_ticksuffix="%", yaxis_title="", margin={"l": 10})
         st.plotly_chart(fig_top, use_container_width=True)
@@ -941,6 +1172,12 @@ else:
         labels={"AGE_BUCKET": "Faixa de Idade", "COUNT": "Nº de Veículos"},
         text="COUNT",
     )
+    out_age = detect_outliers_iqr(dist_age, "COUNT")
+    if not out_age.empty:
+        fig_age_dist = add_outlier_markers(fig_age_dist, out_age, "AGE_BUCKET", "COUNT", orientation="v")
+        r = out_age[["AGE_BUCKET", "COUNT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
+        r.insert(0, "GRAFICO", "Distribuição da Frota por Faixa de Idade")
+        outlier_reports.append(r)
     fig_age_dist.update_traces(textposition="outside")
     fig_age_dist.update_layout(xaxis_title="Faixa de Idade", yaxis_title="Nº de Veículos")
     st.plotly_chart(fig_age_dist, use_container_width=True)
@@ -970,6 +1207,21 @@ else:
         labels={"PCT": "% do Total", "ENTRY_TYPE": "Ativador", "AGE_BUCKET": "Faixa de Idade"},
         text="LABEL",
     )
+    out_ativ = detect_outliers_iqr(top_ativadores, "PCT", group_cols=["AGE_BUCKET"])
+    if not out_ativ.empty:
+        fig_ativadores = add_outlier_markers(fig_ativadores, out_ativ, "PCT", "ENTRY_TYPE", orientation="h")
+        r = out_ativ[["AGE_BUCKET", "ENTRY_TYPE", "PCT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
+        r.insert(0, "GRAFICO", "Ativadores por Faixa de Idade")
+        outlier_reports.append(r)
     fig_ativadores.update_traces(textposition="inside", insidetextanchor="middle")
     fig_ativadores.update_layout(yaxis_title="Ativador", xaxis_ticksuffix="%", xaxis_title="% do Total")
     st.plotly_chart(fig_ativadores, use_container_width=True)
+
+if outlier_reports:
+    st.markdown("---")
+    st.subheader("⚠️ Discrepâncias Detectadas nos Gráficos")
+    outlier_table = pd.concat(outlier_reports, ignore_index=True, sort=False)
+    st.caption("Detecção automática por IQR (valores muito acima/abaixo do padrão da série). Use como alerta de possível erro de digitação ou evento excepcional.")
+    st.dataframe(outlier_table, use_container_width=True, height=320)
+else:
+    st.info("Nenhuma discrepância estatística relevante foi detectada nos gráficos atuais.")
