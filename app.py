@@ -439,7 +439,14 @@ if range_errors:
 
 # Apply configured ranges globally to keep all app outputs in sync
 df = df.copy()
-df["YEAR"] = pd.to_datetime(df["MONTH"], errors="coerce").dt.year.astype("Int64").astype(str)
+year_from_month_date = pd.to_datetime(df.get("MONTH_DATE"), errors="coerce").dt.year
+year_from_month_label = (
+    df["MONTH"]
+    .astype("string")
+    .str.extract(r"/(\d{4})$")[0]
+    .astype("Int64")
+)
+df["YEAR"] = year_from_month_date.fillna(year_from_month_label).astype("Int64").astype("string")
 df[["EQUIP_VAL_BUCKET", "SIMULATED_PAYMENT_BASE"]] = df.apply(
     lambda row: pd.Series(_assign_range(row["EQUIPMENT_VALUE"], active_ranges)),
     axis=1,
@@ -468,18 +475,18 @@ for c in df.columns:
         filterable_fields.append(c)
 filterable_fields = list(dict.fromkeys(filterable_fields))
 
-if "filter_config" not in st.session_state:
+def _build_initial_filters(dataframe: pd.DataFrame):
     initial_filters = []
     for tpl in DEFAULT_FILTER_TEMPLATES:
         field = tpl["field"]
         op = tpl["operator"]
         if op == "in_default_bucket":
-            options = sorted(df["EQUIP_VAL_BUCKET"].dropna().unique().tolist())
+            options = sorted(dataframe["EQUIP_VAL_BUCKET"].dropna().unique().tolist())
             selected = [b for b in options if b != "Sem Valor Definido"]
             initial_filters.append(_new_filter_row(field="EQUIP_VAL_BUCKET", operator="in", selected=selected))
         elif op == "in":
             options = sorted(
-                df[field].dropna().unique().tolist(),
+                dataframe[field].dropna().unique().tolist(),
                 key=(
                     _month_sort_key
                     if field == "MONTH"
@@ -491,7 +498,14 @@ if "filter_config" not in st.session_state:
             initial_filters.append(_new_filter_row(field=field, operator="in", selected=options))
         else:
             initial_filters.append(_new_filter_row(field=field, operator="contains", query=""))
-    st.session_state.filter_config = initial_filters
+    return initial_filters
+
+if st.sidebar.button("Resetar filtros"):
+    st.session_state.filter_config = _build_initial_filters(df)
+    st.rerun()
+
+if "filter_config" not in st.session_state:
+    st.session_state.filter_config = _build_initial_filters(df)
 
 if not st.session_state.filter_config:
     st.session_state.filter_config = [_new_filter_row()]
