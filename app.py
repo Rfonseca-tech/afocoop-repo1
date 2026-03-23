@@ -604,7 +604,7 @@ def _build_initial_filters(dataframe: pd.DataFrame):
         op = tpl["operator"]
         if op == "in_default_bucket":
             options = sorted(dataframe["EQUIP_VAL_BUCKET"].dropna().unique().tolist())
-            selected = [b for b in options if b != "Sem Valor Definido"]
+            selected = options
             initial_filters.append(_new_filter_row(field="EQUIP_VAL_BUCKET", operator="in", selected=selected))
         elif op == "in":
             options = sorted(
@@ -696,13 +696,13 @@ for idx, row in enumerate(st.session_state.filter_config):
                 # In this case, auto-include newly available labels to avoid data disappearing.
                 stale_labels = [x for x in previous_selected if x not in options]
                 if stale_labels:
-                    default_bucket_options = [b for b in options if b != "Sem Valor Definido"]
+                    default_bucket_options = options
                     current_selected = sorted(set(current_selected + default_bucket_options))
                     force_widget_sync = True
 
         if field == "EQUIP_VAL_BUCKET" and not current_selected:
-            # Keep legacy default behavior when selection is empty.
-            current_selected = [b for b in options if b != "Sem Valor Definido"]
+            # Keep all faixas selected when selection is empty.
+            current_selected = options
             force_widget_sync = True
 
         # Streamlit keeps widget state by key and may ignore changed defaults.
@@ -774,6 +774,7 @@ st.subheader("Indicadores Principais")
 col1, col2 = st.columns(2)
 
 total_trucks = filtered_df["LICENSE_PLATE"].nunique()
+total_trucks_base = df["LICENSE_PLATE"].nunique()
 total_with_fipe = len(filtered_df[filtered_df["EQUIPMENT_VALUE"] > 0])
 avg_equip_val = filtered_df[filtered_df["EQUIPMENT_VALUE"] > 0]["EQUIPMENT_VALUE"].mean() if total_with_fipe > 0 else 0
 
@@ -781,7 +782,8 @@ total_current = filtered_df["CURRENT_PAYMENT"].sum()
 total_simulated = filtered_df["SIMULATED_PAYMENT"].sum()
 diff_total = total_simulated - total_current
 
-col1.metric("Veículos Únicos", f"{total_trucks:,}")
+col1.metric("Veículos Únicos (após filtros)", f"{total_trucks:,}")
+col1.caption(f"Base total no recorte carregado: {total_trucks_base:,}")
 col2.metric("Média Valor FIPE", f"R$ {avg_equip_val:,.2f}")
 
 
@@ -938,7 +940,7 @@ if "FUNDO" in filtered_df.columns:
             r = out_fap[["MONTH", "EQUIP_VAL_BUCKET", "COUNT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
             r.insert(0, "GRAFICO", "FAP — Quantidade por Faixa e Mês")
             outlier_reports.append(r)
-        fig_fap_faixas.update_traces(textposition="inside", insidetextanchor="middle")
+        fig_fap_faixas.update_traces(textposition="inside", insidetextanchor="middle", selector=dict(type="bar"))
         fig_fap_faixas.update_layout(legend_title_text="Faixa", yaxis_title="Nº de Veículos")
         hide_sem_valor_default(fig_fap_faixas)
         st.plotly_chart(fig_fap_faixas, use_container_width=True)
@@ -979,7 +981,7 @@ if "FUNDO" in filtered_df.columns:
             r = out_comp[["MONTH", "EQUIP_VAL_BUCKET", "PCT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
             r.insert(0, "GRAFICO", f"{fundo_name} — Composição por Faixa")
             outlier_reports.append(r)
-        fig_comp.update_traces(textposition="inside", insidetextanchor="middle")
+        fig_comp.update_traces(textposition="inside", insidetextanchor="middle", selector=dict(type="bar"))
         fig_comp.update_layout(yaxis_ticksuffix="%", legend_title_text="Faixa")
         hide_sem_valor_default(fig_comp)
         st.plotly_chart(fig_comp, use_container_width=True)
@@ -1003,7 +1005,7 @@ if "FUNDO" in filtered_df.columns:
                 r = out_dpa_qtd[["MONTH", "EQUIP_VAL_BUCKET", "COUNT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
                 r.insert(0, "GRAFICO", "DPA — Quantidade por Faixa e Mês")
                 outlier_reports.append(r)
-            fig_dpa_qtd.update_traces(textposition="inside", insidetextanchor="middle")
+            fig_dpa_qtd.update_traces(textposition="inside", insidetextanchor="middle", selector=dict(type="bar"))
             fig_dpa_qtd.update_layout(legend_title_text="Faixa", yaxis_title="Nº de Veículos")
             hide_sem_valor_default(fig_dpa_qtd)
             st.plotly_chart(fig_dpa_qtd, use_container_width=True)
@@ -1061,7 +1063,7 @@ if "FUNDO" in filtered_df.columns:
             r = out_top[["MARCA_MODELO", "PCT", "COUNT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
             r.insert(0, "GRAFICO", f"{fundo_name} — Top 10 Marcas/Equipamentos")
             outlier_reports.append(r)
-        fig_top.update_traces(textposition="inside", insidetextanchor="middle")
+        fig_top.update_traces(textposition="inside", insidetextanchor="middle", selector=dict(type="bar"))
         fig_top.update_layout(xaxis_ticksuffix="%", yaxis_title="", margin={"l": 10})
         st.plotly_chart(fig_top, use_container_width=True)
 else:
@@ -1213,7 +1215,7 @@ else:
         r = out_ativ[["AGE_BUCKET", "ENTRY_TYPE", "PCT", "OUTLIER_LOWER", "OUTLIER_UPPER"]].copy()
         r.insert(0, "GRAFICO", "Ativadores por Faixa de Idade")
         outlier_reports.append(r)
-    fig_ativadores.update_traces(textposition="inside", insidetextanchor="middle")
+    fig_ativadores.update_traces(textposition="inside", insidetextanchor="middle", selector=dict(type="bar"))
     fig_ativadores.update_layout(yaxis_title="Ativador", xaxis_ticksuffix="%", xaxis_title="% do Total")
     st.plotly_chart(fig_ativadores, use_container_width=True)
 
